@@ -1,4 +1,5 @@
 *.o
+tests/cpp-tests
 tests/pretty
 tests/stream
 tests/tests

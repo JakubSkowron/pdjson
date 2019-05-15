@@ -2,6 +2,12 @@
 #define PDJSON_H
 
 #ifdef __cplusplus
+#include <cstdio>
+#else
+#include <stdio.h>
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #else
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)
@@ -103,6 +109,62 @@ struct json_stream {
 
 #ifdef __cplusplus
 } /* extern "C" */
+
+namespace pdjson {
+
+struct value_base {
+  enum class type {
+    end, error,
+    object, array, string, number, bool_true, bool_false, null
+  };
+  value_base::type type;
+};
+
+struct string {
+  value_base base;
+  const char* string;  // not null-terminated
+  int length;
+};
+
+struct number {
+  value_base base;
+  const char* number;  // internally represented as pointer to original string, not null-terminated
+  int length;
+};
+
+struct array {
+  value_base base;
+  int number_of_members;
+};
+
+struct object {
+  value_base base;
+  int number_of_members;
+};
+
+typedef typename value_base::type type;
+
+union value {
+  value_base base;
+  value_base string;
+  value_base number;
+  value_base array;
+  value_base object;
+};
+
+class parser {
+public:
+  parser( const char* string );
+  parser( const char* buffer, std::size_t size );
+  ~parser();
+
+  value next();
+private:
+  json_stream stream;
+};
+
+}  // namespace pdjson
+
 #endif /* __cplusplus */
 
 #endif

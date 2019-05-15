@@ -1,8 +1,17 @@
 #define _POSIX_C_SOURCE 200112L
+
+#ifdef __cplusplus
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <type_traits>
+#include "pdjson.h"
+#else
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include "pdjson.h"
+#endif
 
 #define JSON_FLAG_ERROR      (1u << 0)
 #define JSON_FLAG_STREAMING  (1u << 1)
@@ -33,6 +42,10 @@
 #endif /* _MSC_VER */
 
 #define STACK_INC 4
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct json_stack {
     enum json_type type;
@@ -891,3 +904,41 @@ void json_close(json_stream *json)
     json->alloc.free(json->stack);
     json->alloc.free(json->data.string);
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+
+namespace pdjson {
+
+static_assert( std::is_standard_layout<value_base>::value, "pdjson::value_base should have standard layout");
+static_assert( std::is_standard_layout<object>::value, "pdjson::object should have standard layout");
+static_assert( std::is_standard_layout<value>::value, "pdjson::value should have standard layout");
+
+parser::parser( const char* string ) {
+  json_open_string( &stream, string );
+}
+
+parser::parser( const char* buffer, std::size_t size ) {
+  json_open_buffer( &stream, buffer, size );
+}
+
+parser::~parser() {
+  json_close( &stream );
+}
+
+value parser::next() {
+  pdjson::value ret;
+  json_type type = json_next(&stream);
+  switch( type ) {
+    case JSON_DONE:
+      ret.base.type = pdjson::type::end;
+      return ret;
+    default:
+      ret.base.type = pdjson::type::error;
+      return ret;
+  }
+}
+
+}  // namespace pdjson
+
+#endif //ifdef __cplusplus

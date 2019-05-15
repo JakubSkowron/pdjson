@@ -1,6 +1,6 @@
-# Public Domain JSON Parser for C
+# Public Domain JSON Parser for C++
 
-A public domain JSON parser focused on correctness, ANSI C99
+A public domain JSON parser focused on correctness,
 compliance, full Unicode (UTF-8) support, minimal memory footprint,
 and a simple API. As a streaming API, arbitrary large JSON could be
 processed with a small amount of memory (the size of the largest
@@ -25,6 +25,12 @@ the stream to be "reset," and to continue parsing the stream.
 The library is usable and nearly complete, but needs polish.
 
 ## API Overview
+
+### C++ API
+
+Undocumented yet
+
+### C API
 
 All parser state is attached to a `json_stream` struct. Its fields
 should not be accessed directly. To initialize, it can be "opened" on
