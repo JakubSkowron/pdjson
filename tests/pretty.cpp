@@ -4,6 +4,8 @@
 #include <errno.h>
 #include "../pdjson.h"
 
+using namespace pdjson;
+
 void indent(int n)
 {
     for (int i = 0; i < n * 2; i++)
@@ -90,12 +92,13 @@ void pretty(json_stream *json)
 long read_file(const char* fname, char** content)
 {
     FILE *f = fopen(fname, "rb");
+    long fsize;
     if (!f) goto err;
     if (0 != fseek(f, 0, SEEK_END)) goto err;
-    long fsize = ftell(f);
+    fsize = ftell(f);
     if (fsize == -1L) goto err;
     if (0 != fseek(f, 0, SEEK_SET)) goto err;
-    *content = malloc(fsize + 1);
+    *content = (char*)malloc(fsize + 1);
     fread(*content, fsize, 1, f);
     if (ferror(f)) goto err;
     fclose(f);

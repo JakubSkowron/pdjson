@@ -1,5 +1,7 @@
 # Public Domain JSON Parser for C++
 
+This is a work in progress, it does not work yet.
+
 A public domain JSON parser focused on correctness,
 compliance, full Unicode (UTF-8) support, minimal memory footprint,
 and a simple API. As a streaming API, arbitrary large JSON could be

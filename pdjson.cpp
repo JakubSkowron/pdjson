@@ -1,17 +1,8 @@
-#define _POSIX_C_SOURCE 200112L
-
-#ifdef __cplusplus
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
 #include <type_traits>
 #include "pdjson.h"
-#else
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include "pdjson.h"
-#endif
 
 #define JSON_FLAG_ERROR      (1u << 0)
 #define JSON_FLAG_STREAMING  (1u << 1)
@@ -43,9 +34,7 @@
 
 #define STACK_INC 4
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+namespace pdjson {
 
 struct json_stack {
     enum json_type type;
@@ -905,11 +894,6 @@ void json_close(json_stream *json)
     json->alloc.free(json->data.string);
 }
 
-#ifdef __cplusplus
-}  // extern "C"
-
-namespace pdjson {
-
 static_assert( std::is_standard_layout<value_base>::value, "pdjson::value_base should have standard layout");
 static_assert( std::is_standard_layout<object>::value, "pdjson::object should have standard layout");
 static_assert( std::is_standard_layout<value>::value, "pdjson::value should have standard layout");
@@ -940,5 +924,3 @@ value parser::next() {
 }
 
 }  // namespace pdjson
-
-#endif //ifdef __cplusplus

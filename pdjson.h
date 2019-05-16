@@ -1,27 +1,9 @@
 #ifndef PDJSON_H
 #define PDJSON_H
 
-#ifdef __cplusplus
 #include <cstdio>
-#else
-#include <stdio.h>
-#endif
 
-#ifdef __cplusplus
-extern "C" {
-#else
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)
-    #include <stdbool.h>
-#else
-    #ifndef bool
-        #define bool int
-        #define true 1
-        #define false 0
-    #endif /* bool */
-#endif /* __STDC_VERSION__ */
-#endif /* __cplusplus */
-
-#include <stdio.h>
+namespace pdjson {
 
 enum json_type {
     JSON_ERROR = 1, JSON_DONE,
@@ -107,11 +89,6 @@ struct json_stream {
     char errmsg[128];
 };
 
-#ifdef __cplusplus
-} /* extern "C" */
-
-namespace pdjson {
-
 struct value_base {
   enum class type {
     end, error,
@@ -165,6 +142,4 @@ private:
 
 }  // namespace pdjson
 
-#endif /* __cplusplus */
-
-#endif
+#endif  // PDJSON_H
