@@ -2,7 +2,8 @@
  * intended to help write tests.
  */
 #include <stdio.h>
-#include "../pdjson.h"
+
+#include "../parser.h"
 
 using namespace pdjson;
 

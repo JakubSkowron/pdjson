@@ -16,11 +16,11 @@ tests/tests: tests/tests.o pdjson.o
 tests/stream: tests/stream.o pdjson.o
 	$(CXX) $(LDFLAGS) -o $@ tests/stream.o pdjson.o $(LDLIBS)
 
-pdjson.o: pdjson.cpp pdjson.h
-tests/cpp-tests.o: tests/cpp-tests.cpp pdjson.h
-tests/pretty.o: tests/pretty.cpp pdjson.h
-tests/tests.o: tests/tests.cpp pdjson.h
-tests/stream.o: tests/stream.cpp pdjson.h
+pdjson.o: pdjson.cpp parser.h printer.h
+tests/cpp-tests.o: tests/cpp-tests.cpp parser.h printer.h
+tests/pretty.o: tests/pretty.cpp parser.h
+tests/tests.o: tests/tests.cpp parser.h
+tests/stream.o: tests/stream.cpp parser.h
 
 test: check
 check: tests/tests
@@ -28,7 +28,7 @@ check: tests/tests
 
 clean:
 	rm -f tests/cpp-tests tests/pretty tests/tests tests/stream
-	rm -f pdjson.o tests/pretty.o tests/tests.o tests/stream.o pdjson.o
+	rm -f pdjson.o tests/pretty.o tests/tests.o tests/stream.o
 
 .cpp:
 	$(CXX) -c $(CXXFLAGS) -o $@ $<

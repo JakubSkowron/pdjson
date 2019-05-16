@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "../pdjson.h"
+
+#include "../parser.h"
 
 using namespace pdjson;
 

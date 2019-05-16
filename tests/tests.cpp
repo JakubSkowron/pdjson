@@ -1,7 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include "../pdjson.h"
+
+#include "../parser.h"
 
 #if _WIN32
 #  define C_RED(s)   s

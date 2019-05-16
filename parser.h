@@ -1,56 +1,11 @@
-#ifndef PDJSON_H
-#define PDJSON_H
+#ifndef PDJSON_PARSER_H
+#define PDJSON_PARSER_H
 
 #include <cstdio>
-#include <type_traits>
-#include <sstream>
 
 namespace pdjson {
 
-// Printing
-
-class printer {
-public:
-  void new_key(const char* key);
-
-  void new_object();
-  void new_object(const char* key) { new_key(key); new_object(); }
-  void end_object();
-
-  void new_array();
-  void new_array(const char* key) { new_key(key); new_array(); }
-  void end_array();
-
-  void boolean(bool b);
-  void boolean(const char* key, bool b) { new_key(key); boolean(b); }
-
-  void string(const char* s);
-  void string(const char* key, const char* s) { new_key(key); string(s); }
-
-  void null();
-  void null(const char* key) { new_key(key); null(); }
-
-  template<typename T>
-  void number(T t) {
-    static_assert(std::is_arithmetic<T>::value);
-    static_assert(!std::is_same<bool,T>::value);
-
-    put_comma();
-    ss << +t;  // char types needs conversion to printable integer, hence unary +
-    need_comma = true;
-  }
-  template<typename T>
-  void number(const char* key, T t) { new_key(key); number(t); }
-
-  std::string str() const { return ss.str(); };
-
-private:
-  bool need_comma = false;
-  void put_comma();
-  std::ostringstream ss;
-};
-
-// Parsing
+// JSON Parser
 
 enum json_type {
     JSON_ERROR = 1, JSON_DONE,
@@ -191,4 +146,4 @@ private:
 
 }  // namespace pdjson
 
-#endif  // PDJSON_H
+#endif  // PDJSON_PARSER_H

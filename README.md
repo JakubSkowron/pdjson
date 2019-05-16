@@ -1,4 +1,4 @@
-# Public Domain JSON Parser for C++
+# Public Domain JSON Parser and Formatter for C++
 
 This is a work in progress, it does not work yet.
 
@@ -29,8 +29,29 @@ The library is usable and nearly complete, but needs polish.
 ## API Overview
 
 ### C++ API
+Example usage (printing JSON):
+```c++
+  pdjson::printer json;
+  json.new_object();
+    json.number( "a", -0.2 );
+    json.number( "b", 100 );
+    json.new_object( u8"😍" );
+      json.string( u8"chrząszcz brzmi w trzcinie", u8"[ˈxʂɔw̃ʂt͡ʂ ˈbʐmi fˈtʂt͡ɕiɲɛ]" );
+      json.new_array("a");
+        json.number(1);
+        json.number(2);
+        json.number(3);
+        json.new_array();
+        json.end_array();
+      json.end_array();
+    json.end_object();
+  json.end_object();
+```
+Get result by calling `json.str()`
+```json
+{"a":-0.2,"b":100,"😍":{"chrząszcz brzmi w trzcinie":"[ˈxʂɔw̃ʂt͡ʂ ˈbʐmi fˈtʂt͡ɕiɲɛ]","a":[1,2,3,[]]}}
+```
 
-Undocumented yet
 
 ### C API
 
