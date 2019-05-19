@@ -3,9 +3,9 @@
  */
 #include <stdio.h>
 
-#include "../parser.h"
+#include "parser_impl.h"
 
-using namespace pdjson;
+using namespace pdjson::impl;
 
 const char* json_typename[] = {
     "", "ERROR", "DONE", "OBJECT", "OBJECT_END", "ARRAY", "ARRAY_END", "STRING", "NUMBER", "TRUE", "FALSE", "NULL"};
@@ -18,39 +18,39 @@ main(void)
     json_set_streaming(s, 1);
     puts("struct expect seq[] = {");
     for (;;) {
-        enum json_type type = json_next(s);
+        json_type type = json_next(s);
         const char *value = 0;
         switch (type) {
-            case JSON_DONE:
+            case json_type::done:
                 json_reset(s);
                 break;
-            case JSON_NULL:
+            case json_type::json_null:
                 value = "null";
                 break;
-            case JSON_TRUE:
+            case json_type::json_true:
                 value = "true";
                 break;
-            case JSON_FALSE:
+            case json_type::json_false:
                 value = "false";
                 break;
-            case JSON_NUMBER:
+            case json_type::number:
                 value = json_get_string(s, 0);
                 break;
-            case JSON_STRING:
+            case json_type::string:
                 value = json_get_string(s, 0);
                 break;
-            case JSON_ARRAY:
-            case JSON_OBJECT:
-            case JSON_OBJECT_END:
-            case JSON_ARRAY_END:
-            case JSON_ERROR:
+            case json_type::array_start:
+            case json_type::object_start:
+            case json_type::object_end:
+            case json_type::array_end:
+            case json_type::error:
                 break;
         }
         if (value)
-            printf("    {JSON_%s, \"%s\"},\n", json_typename[type], value);
+            printf("    {JSON_%s, \"%s\"},\n", json_typename[(int)type], value);
         else
-            printf("    {JSON_%s},\n", json_typename[type]);
-        if (type == JSON_ERROR)
+            printf("    {JSON_%s},\n", json_typename[(int)type]);
+        if (type == json_type::error)
             break;
     }
     puts("};");

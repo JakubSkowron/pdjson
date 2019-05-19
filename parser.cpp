@@ -1,10 +1,63 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
-#include <type_traits>
 
 #include "parser.h"
-#include "printer.h"
+
+namespace pdjson {
+
+namespace impl {
+
+void json_open_buffer(json_stream *json, const void *buffer, size_t size);
+void json_open_string(json_stream *json, const char *string);
+void json_open_stream(json_stream *json, FILE *stream);
+void json_open_user(json_stream *json, json_user_io get, json_user_io peek, void *user);
+void json_close(json_stream *json);
+
+void json_set_allocator(json_stream *json, json_allocator *a);
+void json_set_streaming(json_stream *json, bool strict);
+
+json_type json_next(json_stream *json);
+json_type json_peek(json_stream *json);
+void json_reset(json_stream *json);
+const char *json_get_string(json_stream *json, size_t *length);
+double json_get_number(json_stream *json);
+
+json_type json_skip(json_stream *json);
+json_type json_skip_until(json_stream *json, json_type type);
+
+size_t json_get_lineno(json_stream *json);
+size_t json_get_position(json_stream *json);
+size_t json_get_depth(json_stream *json);
+const char *json_get_error(json_stream *json);
+
+}  // namespace impl
+
+tokenizer::tokenizer(const void* buffer, size_t size) {
+  impl::json_open_buffer( &stream, buffer, size );
+}
+
+tokenizer::tokenizer(const char* string) {
+  impl::json_open_string( &stream, string );
+}
+
+tokenizer::tokenizer(FILE* file) {
+  impl::json_open_stream( &stream, file );
+}
+
+tokenizer::tokenizer(user_io get, user_io peek, void *user) {
+  impl::json_open_user( &stream, get, peek, user);
+}
+
+tokenizer::~tokenizer() {
+  impl::json_close( &stream );
+}
+
+token_type tokenizer::next() {
+  return impl::json_next(&stream);
+}
+
+namespace impl {
 
 #define JSON_FLAG_ERROR      (1u << 0)
 #define JSON_FLAG_STREAMING  (1u << 1)
@@ -36,96 +89,13 @@
 
 #define STACK_INC 4
 
-namespace pdjson {
-
-// JSON Printer
-
-static std::string escape(const char* s) {
-  std::string str;
-  for(;*s;++s) {
-    switch(*s) {
-    case '"': str += "\\\""; break;
-    case '\\': str += "\\\\"; break;
-    case '\b': str += "\\b"; break;
-    case '\f': str += "\\f"; break;
-    case '\n': str += "\\n"; break;
-    case '\r': str += "\\r"; break;
-    case '\t': str += "\\t"; break;
-    case '\x7f': str += "\\u007f"; break;
-    default:
-      if((unsigned char)*s < 0x20) {
-        char buf[7];
-        std::snprintf( buf, sizeof(buf), "\\u%04x", (unsigned char)*s );
-        str += buf;
-      } else {
-        str += *s;
-      }
-    }
-  }
-  return str;
-}
-
-void printer::put_comma() {
-  if( need_comma ) {
-    ss << ',';
-    need_comma = false;
-  }
-}
-
-void printer::new_key(const char* key) {
-  put_comma();
-  ss << '"' << escape(key) << '"' << ':';
-  need_comma = false;
-}
-
-void printer::new_object() {
-  put_comma();
-  ss << '{';
-  need_comma = false;
-}
-
-void printer::end_object() {
-  ss << '}';
-  need_comma = true;
-}
-
-void printer::new_array() {
-  put_comma();
-  ss << '[';
-  need_comma = false;
-}
-void printer::end_array() {
-  ss << ']';
-  need_comma = true;
-}
-
-void printer::boolean(bool b) {
-  put_comma();
-  ss << (b ? "true" : "false");
-  need_comma = true;
-}
-
-void printer::string(const char* s) {
-  put_comma();
-  ss << '"' << escape(s) << '"';
-  need_comma = true;
-}
-
-void printer::null() {
-  put_comma();
-  ss << "null";
-  need_comma = true;
-}
-
-// JSON Parser
-
 struct json_stack {
-    enum json_type type;
+    json_type type;
     long count;
 };
 
-static enum json_type
-push(json_stream *json, enum json_type type)
+static json_type
+push(json_stream *json, json_type type)
 {
     json->stack_top++;
 
@@ -135,7 +105,7 @@ push(json_stream *json, enum json_type type)
         stack = (struct json_stack *)json->alloc.realloc(json->stack, size);
         if (stack == NULL) {
             json_error(json, "%s", "out of memory");
-            return JSON_ERROR;
+            return json_type::error;
         }
 
         json->stack_size += STACK_INC;
@@ -148,15 +118,15 @@ push(json_stream *json, enum json_type type)
     return type;
 }
 
-static enum json_type
-pop(json_stream *json, int c, enum json_type expected)
+static json_type
+pop(json_stream *json, int c, json_type expected)
 {
     if (json->stack == NULL || json->stack[json->stack_top].type != expected) {
         json_error(json, "unexpected byte, '%c'", c);
-        return JSON_ERROR;
+        return json_type::error;
     }
     json->stack_top--;
-    return expected == JSON_ARRAY ? JSON_ARRAY_END : JSON_OBJECT_END;
+    return expected == json_type::array_start ? json_type::array_end : json_type::object_end;
 }
 
 static int buffer_peek(struct json_source *source)
@@ -193,7 +163,7 @@ static void init(json_stream *json)
     json->flags = JSON_FLAG_STREAMING;
     json->errmsg[0] = '\0';
     json->ntokens = 0;
-    json->next = (enum json_type)0;
+    json->next = (json_type)0;
 
     json->stack = NULL;
     json->stack_top = -1;
@@ -209,12 +179,12 @@ static void init(json_stream *json)
     json->alloc.free = free;
 }
 
-static enum json_type
-is_match(json_stream *json, const char *pattern, enum json_type type)
+static json_type
+is_match(json_stream *json, const char *pattern, json_type type)
 {
     for (const char *p = pattern; *p; p++)
         if (*p != json->source.get(&json->source))
-            return JSON_ERROR;
+            return json_type::error;
     return type;
 }
 
@@ -484,10 +454,10 @@ is_legal_utf8(const unsigned char *bytes, int length)
         // Everything else falls through when true.
     case 4:
         if ((a = (*--srcptr)) < 0x80 || a > 0xBF) return 0;
-        /* FALLTHRU */
+        [[fallthrough]];
     case 3:
         if ((a = (*--srcptr)) < 0x80 || a > 0xBF) return 0;
-        /* FALLTHRU */
+        [[fallthrough]];
     case 2:
         a = (*--srcptr);
         switch (*bytes)
@@ -508,6 +478,7 @@ is_legal_utf8(const unsigned char *bytes, int length)
             if (a < 0x80 || a > 0xBF) return 0;
             break;
         }
+        [[fallthrough]];
     case 1:
         if (*bytes >= 0x80 && *bytes < 0xC2) return 0;
     }
@@ -546,38 +517,38 @@ read_utf8(json_stream* json, int next_char)
     return 0;
 }
 
-static enum json_type
+static json_type
 read_string(json_stream *json)
 {
     if (init_string(json) != 0)
-        return JSON_ERROR;
+        return json_type::error;
     while (1) {
         int c = json->source.get(&json->source);
         if (c == EOF) {
             json_error(json, "%s", "unterminated string literal");
-            return JSON_ERROR;
+            return json_type::error;
         } else if (c == '"') {
             if (pushchar(json, '\0') == 0)
-                return JSON_STRING;
+                return json_type::string;
             else
-                return JSON_ERROR;
+                return json_type::error;
         } else if (c == '\\') {
             if (read_escaped(json) != 0)
-                return JSON_ERROR;
+                return json_type::error;
         } else if ((unsigned) c >= 0x80) {
             if (read_utf8(json, c) != 0)
-                return JSON_ERROR;
+                return json_type::error;
         } else {
             if (char_needs_escaping(c)) {
                 json_error(json, "%s", "unescaped control character in string");
-                return JSON_ERROR;
+                return json_type::error;
             }
 
             if (pushchar(json, c) != 0)
-                return JSON_ERROR;
+                return json_type::error;
         }
     }
-    return JSON_ERROR;
+    return json_type::error;
 }
 
 static int
@@ -604,11 +575,11 @@ read_digits(json_stream *json)
     return 0;
 }
 
-static enum json_type
+static json_type
 read_number(json_stream *json, int c)
 {
     if (pushchar(json, c) != 0)
-        return JSON_ERROR;
+        return json_type::error;
     if (c == '-') {
         c = json->source.get(&json->source);
         if (is_digit(c)) {
@@ -620,49 +591,49 @@ read_number(json_stream *json, int c)
         c = json->source.peek(&json->source);
         if (is_digit(c)) {
             if (read_digits(json) != 0)
-                return JSON_ERROR;
+                return json_type::error;
         }
     }
     /* Up to decimal or exponent has been read. */
     c = json->source.peek(&json->source);
     if (strchr(".eE", c) == NULL) {
         if (pushchar(json, '\0') != 0)
-            return JSON_ERROR;
+            return json_type::error;
         else
-            return JSON_NUMBER;
+            return json_type::number;
     }
     if (c == '.') {
         json->source.get(&json->source); // consume .
         if (pushchar(json, c) != 0)
-            return JSON_ERROR;
+            return json_type::error;
         if (read_digits(json) != 0)
-            return JSON_ERROR;
+            return json_type::error;
     }
     /* Check for exponent. */
     c = json->source.peek(&json->source);
     if (c == 'e' || c == 'E') {
         json->source.get(&json->source); // consume e/E
         if (pushchar(json, c) != 0)
-            return JSON_ERROR;
+            return json_type::error;
         c = json->source.peek(&json->source);
         if (c == '+' || c == '-') {
             json->source.get(&json->source); // consume
             if (pushchar(json, c) != 0)
-                return JSON_ERROR;
+                return json_type::error;
             if (read_digits(json) != 0)
-                return JSON_ERROR;
+                return json_type::error;
         } else if (is_digit(c)) {
             if (read_digits(json) != 0)
-                return JSON_ERROR;
+                return json_type::error;
         } else {
             json_error(json, "unexpected byte in number, '%c'", c);
-            return JSON_ERROR;
+            return json_type::error;
         }
     }
     if (pushchar(json, '\0') != 0)
-        return JSON_ERROR;
+        return json_type::error;
     else
-        return JSON_NUMBER;
+        return json_type::number;
 }
 
 static int
@@ -689,26 +660,26 @@ static int next(json_stream *json)
    return c;
 }
 
-static enum json_type
+static json_type
 read_value(json_stream *json, int c)
 {
     json->ntokens++;
     switch (c) {
     case EOF:
         json_error(json, "%s", "unexpected end of data");
-        return JSON_ERROR;
+        return json_type::error;
     case '{':
-        return push(json, JSON_OBJECT);
+        return push(json, json_type::object_start);
     case '[':
-        return push(json, JSON_ARRAY);
+        return push(json, json_type::array_start);
     case '"':
         return read_string(json);
     case 'n':
-        return is_match(json, "ull", JSON_NULL);
+        return is_match(json, "ull", json_type::json_null);
     case 'f':
-        return is_match(json, "alse", JSON_FALSE);
+        return is_match(json, "alse", json_type::json_false);
     case 't':
-        return is_match(json, "rue", JSON_TRUE);
+        return is_match(json, "rue", json_type::json_true);
     case '0':
     case '1':
     case '2':
@@ -721,31 +692,31 @@ read_value(json_stream *json, int c)
     case '9':
     case '-':
         if (init_string(json) != 0)
-            return JSON_ERROR;
+            return json_type::error;
         return read_number(json, c);
     default:
         json_error(json, "unexpected byte, '%c'", c);
-        return JSON_ERROR;
+        return json_type::error;
     }
 }
 
-enum json_type json_peek(json_stream *json)
+json_type json_peek(json_stream *json)
 {
-    enum json_type next;
-    if (json->next)
+    json_type next;
+    if (json->next != (json_type)0)
         next = json->next;
     else
         next = json->next = json_next(json);
     return next;
 }
 
-enum json_type json_next(json_stream *json)
+json_type json_next(json_stream *json)
 {
     if (json->flags & JSON_FLAG_ERROR)
-        return JSON_ERROR;
-    if (json->next != 0) {
-        enum json_type next = json->next;
-        json->next = (enum json_type)0;
+        return json_type::error;
+    if (json->next  != (json_type)0) {
+        json_type next = json->next;
+        json->next = (json_type)0;
         return next;
     }
     if (json->ntokens > 0 && json->stack_top == (size_t)-1) {
@@ -759,18 +730,18 @@ enum json_type json_next(json_stream *json)
         } while (json_isspace(c));
 
         if (!(json->flags & JSON_FLAG_STREAMING) && c != EOF) {
-            return JSON_ERROR;
+            return json_type::error;
         }
 
-        return JSON_DONE;
+        return json_type::done;
     }
     int c = next(json);
     if (json->stack_top == (size_t)-1)
         return read_value(json, c);
-    if (json->stack[json->stack_top].type == JSON_ARRAY) {
+    if (json->stack[json->stack_top].type == json_type::array_start) {
         if (json->stack[json->stack_top].count == 0) {
             if (c == ']') {
-                return pop(json, c, JSON_ARRAY);
+                return pop(json, c, json_type::array_start);
             }
             json->stack[json->stack_top].count++;
             return read_value(json, c);
@@ -778,22 +749,22 @@ enum json_type json_next(json_stream *json)
             json->stack[json->stack_top].count++;
             return read_value(json, next(json));
         } else if (c == ']') {
-            return pop(json, c, JSON_ARRAY);
+            return pop(json, c, json_type::array_start);
         } else {
             json_error(json, "unexpected byte, '%c'", c);
-            return JSON_ERROR;
+            return json_type::error;
         }
-    } else if (json->stack[json->stack_top].type == JSON_OBJECT) {
+    } else if (json->stack[json->stack_top].type == json_type::object_start) {
         if (json->stack[json->stack_top].count == 0) {
             if (c == '}') {
-                return pop(json, c, JSON_OBJECT);
+                return pop(json, c, json_type::object_start);
             }
 
             /* No property value pairs yet. */
-            enum json_type value = read_value(json, c);
-            if (value != JSON_STRING) {
+            json_type value = read_value(json, c);
+            if (value != json_type::string) {
                 json_error(json, "%s", "expected property name or '}'");
-                return JSON_ERROR;
+                return json_type::error;
             } else {
                 json->stack[json->stack_top].count++;
                 return value;
@@ -802,14 +773,14 @@ enum json_type json_next(json_stream *json)
             /* Expecting comma followed by property name. */
             if (c != ',' && c != '}') {
                 json_error(json, "%s", "expected ',' or '}'");
-                return JSON_ERROR;
+                return json_type::error;
             } else if (c == '}') {
-                return pop(json, c, JSON_OBJECT);
+                return pop(json, c, json_type::object_start);
             } else {
-                enum json_type value = read_value(json, next(json));
-                if (value != JSON_STRING) {
+                json_type value = read_value(json, next(json));
+                if (value != json_type::string) {
                     json_error(json, "%s", "expected property name");
-                    return JSON_ERROR;
+                    return json_type::error;
                 } else {
                     json->stack[json->stack_top].count++;
                     return value;
@@ -819,7 +790,7 @@ enum json_type json_next(json_stream *json)
             /* Expecting colon followed by value. */
             if (c != ':') {
                 json_error(json, "%s", "expected ':' after property name");
-                return JSON_ERROR;
+                return json_type::error;
             } else {
                 json->stack[json->stack_top].count++;
                 return read_value(json, next(json));
@@ -827,7 +798,7 @@ enum json_type json_next(json_stream *json)
         }
     }
     json_error(json, "%s", "invalid parser state");
-    return JSON_ERROR;
+    return json_type::error;
 }
 
 void json_reset(json_stream *json)
@@ -838,23 +809,23 @@ void json_reset(json_stream *json)
     json->errmsg[0] = '\0';
 }
 
-enum json_type json_skip(json_stream *json)
+json_type json_skip(json_stream *json)
 {
-    enum json_type type = json_next(json);
+    json_type type = json_next(json);
     size_t cnt_arr = 0;
     size_t cnt_obj = 0;
 
-    for (enum json_type skip = type; ; skip = json_next(json)) {
-        if (skip == JSON_ERROR || skip == JSON_DONE)
+    for (json_type skip = type; ; skip = json_next(json)) {
+        if (skip == json_type::error || skip == json_type::done)
             return skip;
 
-        if (skip == JSON_ARRAY) {
+        if (skip == json_type::array_start) {
             ++cnt_arr;
-        } else if (skip == JSON_ARRAY_END && cnt_arr > 0) {
+        } else if (skip == json_type::array_end && cnt_arr > 0) {
             --cnt_arr;
-        } else if (skip == JSON_OBJECT) {
+        } else if (skip == json_type::object_start) {
             ++cnt_obj;
-        } else if (skip == JSON_OBJECT_END && cnt_obj > 0) {
+        } else if (skip == json_type::object_end && cnt_obj > 0) {
             --cnt_obj;
         }
 
@@ -865,12 +836,12 @@ enum json_type json_skip(json_stream *json)
     return type;
 }
 
-enum json_type json_skip_until(json_stream *json, enum json_type type)
+json_type json_skip_until(json_stream *json, json_type type)
 {
     while (1) {
-        enum json_type skip = json_skip(json);
+        json_type skip = json_skip(json);
 
-        if (skip == JSON_ERROR || skip == JSON_DONE)
+        if (skip == json_type::error || skip == json_type::done)
             return skip;
 
         if (skip == type)
@@ -977,35 +948,6 @@ void json_close(json_stream *json)
     json->alloc.free(json->data.string);
 }
 
-// Draft for C++ parser
-
-static_assert( std::is_standard_layout<value_base>::value, "pdjson::value_base should have standard layout");
-static_assert( std::is_standard_layout<object>::value, "pdjson::object should have standard layout");
-static_assert( std::is_standard_layout<value>::value, "pdjson::value should have standard layout");
-
-parser::parser( const char* string ) {
-  json_open_string( &stream, string );
-}
-
-parser::parser( const char* buffer, std::size_t size ) {
-  json_open_buffer( &stream, buffer, size );
-}
-
-parser::~parser() {
-  json_close( &stream );
-}
-
-value parser::next() {
-  pdjson::value ret;
-  json_type type = json_next(&stream);
-  switch( type ) {
-    case JSON_DONE:
-      ret.base.type = pdjson::type::end;
-      return ret;
-    default:
-      ret.base.type = pdjson::type::error;
-      return ret;
-  }
-}
+}  // namespace impl
 
 }  // namespace pdjson

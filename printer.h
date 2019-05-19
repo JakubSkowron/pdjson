@@ -31,8 +31,8 @@ public:
 
   template<typename T>
   void number(T t) {
-    static_assert(std::is_arithmetic<T>::value);
-    static_assert(!std::is_same<bool,T>::value);
+    static_assert(std::is_arithmetic<T>::value, "Only numbers");
+    static_assert(!std::is_same<bool,T>::value, "Not bool");
 
     put_comma();
     ss << +t;  // char types needs conversion to printable integer, hence unary +

@@ -3,9 +3,9 @@
 #include <string.h>
 #include <errno.h>
 
-#include "../parser.h"
+#include "parser_impl.h"
 
-using namespace pdjson;
+using namespace pdjson::impl;
 
 void indent(int n)
 {
@@ -19,7 +19,7 @@ void pretty_array(json_stream *json)
 {
     printf("[\n");
     int first = 1;
-    while (json_peek(json) != JSON_ARRAY_END && !json_get_error(json)) {
+    while (json_peek(json) != json_type::array_end && !json_get_error(json)) {
         if (!first)
             printf(",\n");
         else
@@ -37,7 +37,7 @@ void pretty_object(json_stream *json)
 {
     printf("{\n");
     int first = 1;
-    while (json_peek(json) != JSON_OBJECT_END && !json_get_error(json)) {
+    while (json_peek(json) != json_type::object_end && !json_get_error(json)) {
         if (!first)
             printf(",\n");
         else
@@ -55,36 +55,36 @@ void pretty_object(json_stream *json)
 
 void pretty(json_stream *json)
 {
-    enum json_type type = json_next(json);
+    json_type type = json_next(json);
     switch (type) {
-    case JSON_DONE:
+    case json_type::done:
         return;
-    case JSON_NULL:
+    case json_type::json_null:
         printf("null");
         break;
-    case JSON_TRUE:
+    case json_type::json_true:
         printf("true");
         break;
-    case JSON_FALSE:
+    case json_type::json_false:
         printf("false");
             break;
-    case JSON_NUMBER:
+    case json_type::number:
         printf("%s", json_get_string(json, NULL));
         break;
-    case JSON_STRING:
+    case json_type::string:
         printf("\"%s\"", json_get_string(json, NULL));
         break;
-    case JSON_ARRAY:
+    case json_type::array_start:
         pretty_array(json);
         break;
-    case JSON_OBJECT:
+    case json_type::object_start:
         pretty_object(json);
         break;
-    case JSON_OBJECT_END:
-    case JSON_ARRAY_END:
+    case json_type::object_end:
+    case json_type::array_end:
         return;
-    case JSON_ERROR:
-            printf("exiting %d\n", type);
+    case json_type::error:
+            printf("exiting %d\n", (int)type);
             fprintf(stderr, "%s\n", json_get_error(json));
             exit(EXIT_FAILURE);
     }
